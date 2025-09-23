@@ -23,4 +23,42 @@ router.get('/top-rented', (req, res) => {
   });
 });
 
+// GET /api/films/:id
+router.get('/:id', (req, res) => {
+  const filmId = req.params.id;
+
+  const query = `
+    SELECT 
+      film.film_id,
+      film.title,
+      film.description,
+      film.release_year,
+      film.length,
+      film.rating,
+      GROUP_CONCAT(DISTINCT category.name) AS categories,
+      GROUP_CONCAT(DISTINCT CONCAT(actor.first_name, ' ', actor.last_name)) AS actors
+    FROM film
+    LEFT JOIN film_category ON film.film_id = film_category.film_id
+    LEFT JOIN category ON film_category.category_id = category.category_id
+    LEFT JOIN film_actor ON film.film_id = film_actor.film_id
+    LEFT JOIN actor ON film_actor.actor_id = actor.actor_id
+    WHERE film.film_id = ?
+    GROUP BY film.film_id;
+  `;
+
+  db.query(query, [filmId], (err, results) => {
+    if (err) {
+      console.error('DB error:', err);
+      return res.status(500).send('Database error');
+    }
+
+    if (results.length === 0) {
+      return res.status(404).send('Film not found');
+    }
+
+    res.json(results[0]);
+  });
+});
+
+
 module.exports = router;
