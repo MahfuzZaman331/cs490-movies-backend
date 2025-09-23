@@ -11,6 +11,10 @@ var app = express();
 const cors = require('cors');
 app.use(cors());
 
+const actorsRouter = require('./routes/actors');
+app.use('/api/actors', actorsRouter);
+
+
 app.use(logger('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
