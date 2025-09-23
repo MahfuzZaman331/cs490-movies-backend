@@ -27,4 +27,33 @@ router.get('/top', (req, res) => {
   });
 });
 
+// GET /api/actors/:id/films
+router.get('/:id/films', (req, res) => {
+  const actorId = req.params.id;
+
+  const query = `
+    SELECT 
+      f.film_id,
+      f.title,
+      COUNT(r.rental_id) AS rental_count
+    FROM film f
+    JOIN film_actor fa ON f.film_id = fa.film_id
+    JOIN inventory i ON f.film_id = i.film_id
+    JOIN rental r ON i.inventory_id = r.inventory_id
+    WHERE fa.actor_id = ?
+    GROUP BY f.film_id
+    ORDER BY rental_count DESC
+    LIMIT 5
+  `;
+
+  db.query(query, [actorId], (err, results) => {
+    if (err) {
+      console.error('Error fetching films for actor:', err);
+      return res.status(500).send('Database error');
+    }
+    res.json(results);
+  });
+});
+
+
 module.exports = router;
