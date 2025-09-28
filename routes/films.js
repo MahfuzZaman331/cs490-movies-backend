@@ -1,54 +1,43 @@
-const express = require('express');
-const router = express.Router();
-const db = require('../db');
+var express = require('express');
+var router = express.Router();
+var db = require('../db');
 
-
-router.get('/search', (req, res) => {
-  const { query } = req.query;
-  const sql = `
-    SELECT DISTINCT f.film_id, f.title
-    FROM film f
-    LEFT JOIN film_actor fa ON f.film_id = fa.film_id
-    LEFT JOIN actor a ON fa.actor_id = a.actor_id
-    LEFT JOIN film_category fc ON f.film_id = fc.film_id
-    LEFT JOIN category c ON fc.category_id = c.category_id
-    WHERE f.title LIKE ? OR a.first_name LIKE ? OR a.last_name LIKE ? OR c.name LIKE ?
-  `;
-  const q = `%${query}%`;
-  db.query(sql, [q, q, q, q], (err, results) => {
-    if (err) return res.status(500).json({ error: 'Query failed' });
-    res.json(results);
-  });
-});
-
-
-// GET /api/films/top-rented
 router.get('/top-rented', (req, res) => {
-  const query = `
+  const q = `
     SELECT f.film_id, f.title, COUNT(r.rental_id) AS rental_count
     FROM film f
     JOIN inventory i ON f.film_id = i.film_id
     JOIN rental r ON i.inventory_id = r.inventory_id
     GROUP BY f.film_id
     ORDER BY rental_count DESC
-    LIMIT 5;
+    LIMIT 5
   `;
-
-  db.query(query, (err, results) => {
-    if (err) {
-      console.error('DB error:', err);
-      return res.status(500).send('Database error');
-    }
-    res.json(results);
+  db.query(q, (err, rows) => {
+    if (err) return res.status(500).send('Database error');
+    res.json(rows);
   });
 });
 
-// GET /api/films/:id
-router.get('/:id', (req, res) => {
-  const filmId = req.params.id;
+router.get('/search', (req, res) => {
+  const term = req.query.query || '';
+  const q = `SELECT film_id, title FROM film WHERE title LIKE ? ORDER BY title ASC`;
+  db.query(q, [`%${term}%`], (err, rows) => {
+    if (err) return res.status(500).send('Database error');
+    res.json(rows);
+  });
+});
 
-  const query = `
-    SELECT 
+router.get('/all', (req, res) => {
+  const q = `SELECT film_id, title FROM film ORDER BY title ASC`;
+  db.query(q, (err, rows) => {
+    if (err) return res.status(500).send('Database error');
+    res.json(rows);
+  });
+});
+
+router.get('/:id', (req, res) => {
+  const q = `
+    SELECT
       film.film_id,
       film.title,
       film.description,
@@ -63,22 +52,13 @@ router.get('/:id', (req, res) => {
     LEFT JOIN film_actor ON film.film_id = film_actor.film_id
     LEFT JOIN actor ON film_actor.actor_id = actor.actor_id
     WHERE film.film_id = ?
-    GROUP BY film.film_id;
+    GROUP BY film.film_id
   `;
-
-  db.query(query, [filmId], (err, results) => {
-    if (err) {
-      console.error('DB error:', err);
-      return res.status(500).send('Database error');
-    }
-
-    if (results.length === 0) {
-      return res.status(404).send('Film not found');
-    }
-
-    res.json(results[0]);
+  db.query(q, [req.params.id], (err, rows) => {
+    if (err) return res.status(500).send('Database error');
+    if (!rows.length) return res.status(404).send('Film not found');
+    res.json(rows[0]);
   });
 });
-
 
 module.exports = router;
