@@ -2,6 +2,26 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+
+router.get('/search', (req, res) => {
+  const { query } = req.query;
+  const sql = `
+    SELECT DISTINCT f.film_id, f.title
+    FROM film f
+    LEFT JOIN film_actor fa ON f.film_id = fa.film_id
+    LEFT JOIN actor a ON fa.actor_id = a.actor_id
+    LEFT JOIN film_category fc ON f.film_id = fc.film_id
+    LEFT JOIN category c ON fc.category_id = c.category_id
+    WHERE f.title LIKE ? OR a.first_name LIKE ? OR a.last_name LIKE ? OR c.name LIKE ?
+  `;
+  const q = `%${query}%`;
+  db.query(sql, [q, q, q, q], (err, results) => {
+    if (err) return res.status(500).json({ error: 'Query failed' });
+    res.json(results);
+  });
+});
+
+
 // GET /api/films/top-rented
 router.get('/top-rented', (req, res) => {
   const query = `
