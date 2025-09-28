@@ -1,3 +1,4 @@
+const rentalsRouter = require('./routes/rentals');
 const express = require('express');
 const path = require('path');
 const cookieParser = require('cookie-parser');
@@ -20,5 +21,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/', indexRouter);
 app.use('/api/films', filmsRouter);
 app.use('/api/actors', actorsRouter);
+app.use('/api/rentals', rentalsRouter);
 
 module.exports = app;
