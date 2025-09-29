@@ -2,67 +2,109 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
-// GET /api/customers
+// GET /api/customers?page=1&search=...
 router.get('/', (req, res) => {
-  const { page = 1, limit = 10, search = '' } = req.query;
+  const limit = parseInt(req.query.limit) || 10;
+  const page = parseInt(req.query.page) || 1;
+  const search = req.query.search || '';
   const offset = (page - 1) * limit;
 
-  const searchQuery = `%${search}%`;
+  const searchTerm = `%${search}%`;
 
   const countQuery = `
-    SELECT COUNT(*) AS count 
-    FROM customer 
+    SELECT COUNT(*) AS total
+    FROM customer
     WHERE first_name LIKE ? OR last_name LIKE ?
   `;
 
   const dataQuery = `
-    SELECT customer_id, first_name, last_name, email, active 
-    FROM customer 
+    SELECT customer_id, first_name, last_name, email, active
+    FROM customer
     WHERE first_name LIKE ? OR last_name LIKE ?
-    ORDER BY first_name, last_name 
+    ORDER BY first_name, last_name
     LIMIT ? OFFSET ?
   `;
 
-  db.query(countQuery, [searchQuery, searchQuery], (err, countResults) => {
+  db.query(countQuery, [searchTerm, searchTerm], (err, countResults) => {
     if (err) {
-      console.error('Count query error:', err);
-      return res.status(500).json({ error: 'Failed to fetch count' });
+      console.error('Error counting customers:', err);
+      return res.status(500).send('Database error');
     }
 
-    const total = countResults[0].count;
+    const total = countResults[0].total;
 
-    db.query(dataQuery, [searchQuery, searchQuery, parseInt(limit), parseInt(offset)], (err, dataResults) => {
+    db.query(dataQuery, [searchTerm, searchTerm, limit, offset], (err, dataResults) => {
       if (err) {
-        console.error('Data query error:', err);
-        return res.status(500).json({ error: 'Failed to fetch customers' });
+        console.error('Error fetching paginated customers:', err);
+        return res.status(500).send('Database error');
       }
 
-      res.json({ results: dataResults, total });
+      res.json({
+        customers: dataResults,
+        total,
+        page,
+        totalPages: Math.ceil(total / limit),
+      });
     });
   });
 });
 
-// GET /api/customers/:id
-router.get('/:id', (req, res) => {
-  const id = req.params.id;
+// GET /api/customers/all — for dropdown
+router.get('/all', (req, res) => {
+  const q = `
+    SELECT customer_id, first_name, last_name
+    FROM customer
+    ORDER BY first_name, last_name
+  `;
+  db.query(q, (err, results) => {
+    if (err) {
+      console.error('Error fetching customers:', err);
+      return res.status(500).send('Database error');
+    }
+    res.json(results);
+  });
+});
 
-  const query = `
-    SELECT customer_id, first_name, last_name, email, active 
-    FROM customer 
+// GET /api/customers/:id — details + rental history
+router.get('/:id', (req, res) => {
+  const customerId = req.params.id;
+
+  const profileQuery = `
+    SELECT customer_id, first_name, last_name, email, active
+    FROM customer
     WHERE customer_id = ?
   `;
 
-  db.query(query, [id], (err, results) => {
+  const rentalsQuery = `
+    SELECT f.title, r.rental_date
+    FROM rental r
+    JOIN inventory i ON r.inventory_id = i.inventory_id
+    JOIN film f ON i.film_id = f.film_id
+    WHERE r.customer_id = ?
+    ORDER BY r.rental_date DESC
+    LIMIT 10
+  `;
+
+  db.query(profileQuery, [customerId], (err, profileResults) => {
     if (err) {
-      console.error('Error fetching customer by ID:', err);
-      return res.status(500).json({ error: 'Failed to fetch customer' });
+      console.error('Error fetching customer profile:', err);
+      return res.status(500).send('Database error');
     }
 
-    if (results.length === 0) {
-      return res.status(404).json({ error: 'Customer not found' });
+    if (!profileResults.length) {
+      return res.status(404).send('Customer not found');
     }
 
-    res.json(results[0]);
+    db.query(rentalsQuery, [customerId], (err, rentalResults) => {
+      if (err) {
+        console.error('Error fetching customer rentals:', err);
+        return res.status(500).send('Database error');
+      }
+
+      const customerData = profileResults[0];
+      customerData.rentals = rentalResults;
+      res.json(customerData);
+    });
   });
 });
 
