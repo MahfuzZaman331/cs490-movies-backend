@@ -1,49 +1,68 @@
-var express = require('express');
-var router = express.Router();
-var db = require('../db');
+const express = require('express');
+const router = express.Router();
+const db = require('../db');
 
+// GET /api/customers
 router.get('/', (req, res) => {
-  const page = parseInt(req.query.page || '1', 10);
-  const limit = parseInt(req.query.limit || '10', 10);
+  const { page = 1, limit = 10, search = '' } = req.query;
   const offset = (page - 1) * limit;
-  const q = (req.query.q || '').trim();
 
-  let where = '';
-  let params = [];
-  if (q) {
-    if (/^\d+$/.test(q)) {
-      where = 'WHERE c.customer_id = ? OR c.first_name LIKE ? OR c.last_name LIKE ?';
-      params = [parseInt(q, 10), `%${q}%`, `%${q}%`];
-    } else {
-      where = 'WHERE c.first_name LIKE ? OR c.last_name LIKE ?';
-      params = [`%${q}%`, `%${q}%`];
+  const searchQuery = `%${search}%`;
+
+  const countQuery = `
+    SELECT COUNT(*) AS count 
+    FROM customer 
+    WHERE first_name LIKE ? OR last_name LIKE ?
+  `;
+
+  const dataQuery = `
+    SELECT customer_id, first_name, last_name, email, active 
+    FROM customer 
+    WHERE first_name LIKE ? OR last_name LIKE ?
+    ORDER BY first_name, last_name 
+    LIMIT ? OFFSET ?
+  `;
+
+  db.query(countQuery, [searchQuery, searchQuery], (err, countResults) => {
+    if (err) {
+      console.error('Count query error:', err);
+      return res.status(500).json({ error: 'Failed to fetch count' });
     }
-  }
 
-  const countSql = `SELECT COUNT(*) AS total FROM customer c ${where}`;
-  db.query(countSql, params, (err, countRows) => {
-    if (err) return res.status(500).send('Database error');
-    const total = countRows[0].total;
-    const dataSql = `
-      SELECT c.customer_id, c.first_name, c.last_name, c.email, c.active, a.address
-      FROM customer c
-      LEFT JOIN address a ON c.address_id = a.address_id
-      ${where}
-      ORDER BY c.customer_id
-      LIMIT ? OFFSET ?
-    `;
-    db.query(dataSql, [...params, limit, offset], (err2, rows) => {
-      if (err2) return res.status(500).send('Database error');
-      res.json({ data: rows, page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) });
+    const total = countResults[0].count;
+
+    db.query(dataQuery, [searchQuery, searchQuery, parseInt(limit), parseInt(offset)], (err, dataResults) => {
+      if (err) {
+        console.error('Data query error:', err);
+        return res.status(500).json({ error: 'Failed to fetch customers' });
+      }
+
+      res.json({ results: dataResults, total });
     });
   });
 });
 
-router.get('/all', (req, res) => {
-  const sql = `SELECT customer_id, first_name, last_name FROM customer ORDER BY last_name, first_name`;
-  db.query(sql, (err, rows) => {
-    if (err) return res.status(500).send('Database error');
-    res.json(rows);
+// GET /api/customers/:id
+router.get('/:id', (req, res) => {
+  const id = req.params.id;
+
+  const query = `
+    SELECT customer_id, first_name, last_name, email, active 
+    FROM customer 
+    WHERE customer_id = ?
+  `;
+
+  db.query(query, [id], (err, results) => {
+    if (err) {
+      console.error('Error fetching customer by ID:', err);
+      return res.status(500).json({ error: 'Failed to fetch customer' });
+    }
+
+    if (results.length === 0) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    res.json(results[0]);
   });
 });
 
