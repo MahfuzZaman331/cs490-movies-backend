@@ -1,6 +1,6 @@
-var express = require('express');
-var router = express.Router();
-var db = require('../db');
+const express = require('express');
+const router = express.Router();
+const db = require('../db');
 
 router.get('/top-rented', (req, res) => {
   const q = `
@@ -19,9 +19,20 @@ router.get('/top-rented', (req, res) => {
 });
 
 router.get('/search', (req, res) => {
-  const term = req.query.query || '';
-  const q = `SELECT film_id, title FROM film WHERE title LIKE ? ORDER BY title ASC`;
-  db.query(q, [`%${term}%`], (err, rows) => {
+  const term = `%${req.query.query || ''}%`;
+  const q = `
+    SELECT DISTINCT f.film_id, f.title
+    FROM film f
+    LEFT JOIN film_actor fa ON f.film_id = fa.film_id
+    LEFT JOIN actor a ON fa.actor_id = a.actor_id
+    LEFT JOIN film_category fc ON f.film_id = fc.film_id
+    LEFT JOIN category c ON fc.category_id = c.category_id
+    WHERE f.title LIKE ?
+       OR CONCAT(a.first_name, ' ', a.last_name) LIKE ?
+       OR c.name LIKE ?
+    ORDER BY f.title ASC
+  `;
+  db.query(q, [term, term, term], (err, rows) => {
     if (err) return res.status(500).send('Database error');
     res.json(rows);
   });
